@@ -7,18 +7,31 @@ import (
 )
 
 type MarshalOptions struct {
-	SelfClosingTags []string
+	Indent          string
+	XMLHeader       bool
+	Namespace       string
+	RootTag         string
 	Compress        bool
+	SelfClosingTags []string
 }
 
 func Marshal(v interface{}, opts *MarshalOptions) ([]byte, error) {
-	node, err := structToNode(reflect.ValueOf(v), opts, "")
+	if opts == nil {
+		opts = &MarshalOptions{}
+	}
+
+	rootTag := opts.RootTag
+	if rootTag == "" {
+		rootTag = reflect.TypeOf(v).Name()
+	}
+
+	node, err := structToNode(reflect.ValueOf(v), opts, rootTag)
 	if err != nil {
 		return nil, err
 	}
 
 	if node == nil {
-		return nil, fmt.Errorf("node retornado é nil")
+		return nil, fmt.Errorf("returned node is nil")
 	}
 
 	buf := acquireBuffer()
@@ -29,13 +42,30 @@ func Marshal(v interface{}, opts *MarshalOptions) ([]byte, error) {
 		selfClosingTags = opts.SelfClosingTags
 	}
 
-	encoder := NewEncoder(buf, selfClosingTags)
+	encoder := NewEncoder(buf, selfClosingTags, opts.Indent)
+
+	if opts.XMLHeader {
+		_, err := buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if opts.Namespace != "" {
+		if elementNode, ok := node.(*ElementNode); ok {
+			elementNode.Attributes = append(elementNode.Attributes, Attribute{
+				Name:  "xmlns",
+				Value: opts.Namespace,
+			})
+		}
+	}
+
 	err = node.Accept(encoder)
 	if err != nil {
 		return nil, err
 	}
 
-	if opts != nil && opts.Compress {
+	if opts.Compress {
 		compressor := acquireCompressor()
 		defer releaseCompressor(compressor)
 
@@ -127,7 +157,7 @@ func structToNode(val reflect.Value, opts *MarshalOptions, xmlTag string) (Node,
 			}
 		}
 
-		if element.SelfClose && len(element.Children) == 0 {
+		if element.SelfClose && len(element.Children) == 0 && len(element.Attributes) == 0 {
 			return element, nil
 		} else {
 			element.SelfClose = false
@@ -154,13 +184,19 @@ func structToNode(val reflect.Value, opts *MarshalOptions, xmlTag string) (Node,
 			}
 		}
 
-		if len(nodes) == 0 {
-			return nil, nil
-		}
-
 		element := acquireElementNode()
 		element.Name = name
 		element.Children = nodes
+
+		if opts != nil {
+			for _, tag := range opts.SelfClosingTags {
+				if tag == name && len(nodes) == 0 {
+					element.SelfClose = true
+					break
+				}
+			}
+		}
+
 		return element, nil
 	}
 

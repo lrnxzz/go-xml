@@ -39,14 +39,22 @@ func isReadable(data []byte) bool {
 
 func TestSimpleSerialization(t *testing.T) {
 	ex := Example{ID: 1, Name: "Test", Note: ""}
-	opts := &MarshalOptions{SelfClosingTags: []string{"note"}}
+	opts := &MarshalOptions{
+		SelfClosingTags: []string{"note"},
+		Indent:          "  ",      // Adding indentation
+		XMLHeader:       true,      // Include XML header
+		RootTag:         "Example", // Setting RootTag (optional, defaults to struct name)
+	}
 	outputBytes, err := Marshal(ex, opts)
 	if err != nil {
 		t.Fatalf("Serialization error: %v", err)
 	}
 	output := string(outputBytes)
 
-	expected := `<Example id="1" name="Test"><note/></Example>`
+	expected := `<?xml version="1.0" encoding="UTF-8"?>
+<Example id="1" name="Test">
+  <note/>
+</Example>`
 	if normalizeXML(output) != normalizeXML(expected) {
 		t.Fatalf("Expected: %s, Got: %s", expected, output)
 	}
@@ -71,14 +79,30 @@ func TestNestedSerialization(t *testing.T) {
 			{ID: 3, Name: "Child 2", Note: ""},
 		},
 	}
-	opts := &MarshalOptions{SelfClosingTags: []string{"note"}}
+	opts := &MarshalOptions{
+		SelfClosingTags: []string{"note"},
+		Indent:          "  ",
+		XMLHeader:       true,
+		Namespace:       "http://example.com/schema",
+		RootTag:         "NestedExample",
+	}
 	outputBytes, err := Marshal(ex, opts)
 	if err != nil {
 		t.Fatalf("Serialization error: %v", err)
 	}
 	output := string(outputBytes)
 
-	expected := `<NestedExample id="1" parent_id="0" QtdDevolucoes="17" ValorDevolucoes="454.47"><children><child id="2" name="Child 1"><note/></child><child id="3" name="Child 2"><note/></child></children></NestedExample>`
+	expected := `<?xml version="1.0" encoding="UTF-8"?>
+<NestedExample xmlns="http://example.com/schema" id="1" parent_id="0" QtdDevolucoes="17" ValorDevolucoes="454.47">
+  <children>
+    <child id="2" name="Child 1">
+      <note/>
+    </child>
+    <child id="3" name="Child 2">
+      <note/>
+    </child>
+  </children>
+</NestedExample>`
 	if normalizeXML(output) != normalizeXML(expected) {
 		t.Fatalf("Expected: %s, Got: %s", expected, output)
 	}
@@ -127,9 +151,10 @@ func TestSimplifiedSerialization(t *testing.T) {
 	}
 
 	opts := &MarshalOptions{
-		SelfClosingTags: []string{
-			"Devolucoes",
-		},
+		SelfClosingTags: []string{"Devolucoes"},
+		Indent:          "    ", // Four spaces for indentation
+		XMLHeader:       true,
+		RootTag:         "APIX001",
 	}
 
 	outputBytes, err := Marshal(apix, opts)
@@ -137,21 +162,22 @@ func TestSimplifiedSerialization(t *testing.T) {
 		t.Fatalf("Serialization error: %v", err)
 	}
 
-	expectedXML := `<APIX001 DtArquivo="2021-11-30" Ano="2021" ISPB="12345678">
-              <Transacoes>
-                <Transacao>
-                  <QtdTransacoes>100</QtdTransacoes>
-                  <ValorTransacoes>5000.00</ValorTransacoes>
-                  <DetalhamentoTransacoes>1</DetalhamentoTransacoes>
-                </Transacao>
-                <Transacao>
-                  <QtdTransacoes>50</QtdTransacoes>
-                  <ValorTransacoes>1234.56</ValorTransacoes>
-                  <DetalhamentoTransacoes>2</DetalhamentoTransacoes>
-                </Transacao>
-              </Transacoes>
-              <Devolucoes QtdDevolucoes="5" ValorDevolucoes="250.00"/>
-            </APIX001>`
+	expectedXML := `<?xml version="1.0" encoding="UTF-8"?>
+<APIX001 DtArquivo="2021-11-30" Ano="2021" ISPB="12345678">
+    <Transacoes>
+        <Transacao>
+            <QtdTransacoes>100</QtdTransacoes>
+            <ValorTransacoes>5000.00</ValorTransacoes>
+            <DetalhamentoTransacoes>1</DetalhamentoTransacoes>
+        </Transacao>
+        <Transacao>
+            <QtdTransacoes>50</QtdTransacoes>
+            <ValorTransacoes>1234.56</ValorTransacoes>
+            <DetalhamentoTransacoes>2</DetalhamentoTransacoes>
+        </Transacao>
+    </Transacoes>
+    <Devolucoes QtdDevolucoes="5" ValorDevolucoes="250.00"/>
+</APIX001>`
 
 	if normalizeXML(string(outputBytes)) != normalizeXML(expectedXML) {
 		t.Fatalf("Expected: %s, Got: %s", expectedXML, string(outputBytes))
@@ -172,7 +198,9 @@ func TestCompressionSerialization(t *testing.T) {
 	}
 
 	opts := &MarshalOptions{
-		Compress: true,
+		Compress:  true,
+		XMLHeader: true,
+		Indent:    "  ",
 	}
 
 	compressedData, err := Marshal(msg, opts)
@@ -195,13 +223,21 @@ func TestCompressionSerialization(t *testing.T) {
 		t.Fatalf("Error reading decompressed data: %v", err)
 	}
 
-	expectedXML := `<Message><Header>Test Header</Header><Body>This is a test message body.</Body><Footer>Test Footer</Footer></Message>`
+	expectedXML := `<?xml version="1.0" encoding="UTF-8"?>
+<Message>
+  <Header>Test Header</Header>
+  <Body>This is a test message body.</Body>
+  <Footer>Test Footer</Footer>
+</Message>`
 
 	if normalizeXML(string(decompressedData)) != normalizeXML(expectedXML) {
 		t.Fatalf("Expected: %s, Got: %s", expectedXML, string(decompressedData))
 	}
 
-	originalData, err := Marshal(msg, nil)
+	originalData, err := Marshal(msg, &MarshalOptions{
+		XMLHeader: true,
+		Indent:    "  ",
+	})
 	if err != nil {
 		t.Fatalf("Error serializing without compression: %v", err)
 	}
@@ -230,18 +266,25 @@ func TestAdditionalScenarios(t *testing.T) {
 		Note:     "",
 	}
 
-	outputBytes, err := Marshal(product, nil)
+	opts := &MarshalOptions{
+		Indent:    "  ",
+		XMLHeader: true,
+		RootTag:   "Product",
+	}
+
+	outputBytes, err := Marshal(product, opts)
 	if err != nil {
 		t.Fatalf("Serialization error: %v", err)
 	}
 
-	expectedXML := `<Product>
-		<ID>0</ID>
-		<Name></Name>
-		<Price>0.00</Price>
-		<Quantity>0</Quantity>
-		<Note></Note>
-	</Product>`
+	expectedXML := `<?xml version="1.0" encoding="UTF-8"?>
+<Product>
+  <ID>0</ID>
+  <Name></Name>
+  <Price>0.00</Price>
+  <Quantity>0</Quantity>
+  <Note></Note>
+</Product>`
 
 	if normalizeXML(string(outputBytes)) != normalizeXML(expectedXML) {
 		t.Fatalf("Expected: %s, Got: %s", expectedXML, string(outputBytes))
@@ -255,14 +298,20 @@ func TestAdditionalScenarios(t *testing.T) {
 		Text: "Special characters: & < > \" '",
 	}
 
-	outputBytes, err = Marshal(data, nil)
+	opts = &MarshalOptions{
+		Indent:    "  ",
+		XMLHeader: true,
+	}
+
+	outputBytes, err = Marshal(data, opts)
 	if err != nil {
 		t.Fatalf("Serialization error: %v", err)
 	}
 
-	expectedXML = `<Data>
-		<Text>Special characters: &amp; &lt; &gt; &quot; &apos;</Text>
-	</Data>`
+	expectedXML = `<?xml version="1.0" encoding="UTF-8"?>
+<Data>
+  <Text>Special characters: &amp; &lt; &gt; &quot; &apos;</Text>
+</Data>`
 
 	if normalizeXML(string(outputBytes)) != normalizeXML(expectedXML) {
 		t.Fatalf("Expected: %s, Got: %s", expectedXML, string(outputBytes))
@@ -279,15 +328,21 @@ func TestAdditionalScenarios(t *testing.T) {
 		Name:    "MyConfig",
 	}
 
-	outputBytes, err = Marshal(config, nil)
+	opts = &MarshalOptions{
+		Indent:    "  ",
+		XMLHeader: true,
+	}
+
+	outputBytes, err = Marshal(config, opts)
 	if err != nil {
 		t.Fatalf("Serialization error: %v", err)
 	}
 
-	expectedXML = `<Config>
-		<Enabled>true</Enabled>
-		<Name>MyConfig</Name>
-	</Config>`
+	expectedXML = `<?xml version="1.0" encoding="UTF-8"?>
+<Config>
+  <Enabled>true</Enabled>
+  <Name>MyConfig</Name>
+</Config>`
 
 	if normalizeXML(string(outputBytes)) != normalizeXML(expectedXML) {
 		t.Fatalf("Expected: %s, Got: %s", expectedXML, string(outputBytes))
@@ -313,8 +368,11 @@ func TestAdditionalScenarios(t *testing.T) {
 		},
 	}
 
-	opts := &MarshalOptions{
+	opts = &MarshalOptions{
 		SelfClosingTags: []string{"Tag"},
+		Indent:          "  ",
+		XMLHeader:       true,
+		RootTag:         "Item",
 	}
 
 	outputBytes, err = Marshal(item, opts)
@@ -322,12 +380,13 @@ func TestAdditionalScenarios(t *testing.T) {
 		t.Fatalf("Serialization error: %v", err)
 	}
 
-	expectedXML = `<Item id="1" name="Item1">
-		<Tags>
-			<Tag id="101" name="Tag1"/>
-			<Tag id="102" name="Tag2"/>
-		</Tags>
-	</Item>`
+	expectedXML = `<?xml version="1.0" encoding="UTF-8"?>
+<Item id="1" name="Item1">
+  <Tags>
+    <Tag id="101" name="Tag1"/>
+    <Tag id="102" name="Tag2"/>
+  </Tags>
+</Item>`
 
 	if normalizeXML(string(outputBytes)) != normalizeXML(expectedXML) {
 		t.Fatalf("Expected: %s, Got: %s", expectedXML, string(outputBytes))
@@ -357,6 +416,9 @@ func TestFullSelfClosingSerialization(t *testing.T) {
 
 	opts := &MarshalOptions{
 		SelfClosingTags: []string{"details", "description", "remarks"},
+		Indent:          "  ",
+		XMLHeader:       true,
+		RootTag:         "FullSelfClosingExample",
 	}
 
 	outputBytes, err := Marshal(example, opts)
@@ -364,12 +426,13 @@ func TestFullSelfClosingSerialization(t *testing.T) {
 		t.Fatalf("Serialization error: %v", err)
 	}
 
-	expectedXML := `<FullSelfClosingExample id="123" name="FullSelfClosing">
-		<details>
-			<description/>
-			<remarks/>
-		</details>
-	</FullSelfClosingExample>`
+	expectedXML := `<?xml version="1.0" encoding="UTF-8"?>
+<FullSelfClosingExample id="123" name="FullSelfClosing">
+  <details>
+    <description/>
+    <remarks/>
+  </details>
+</FullSelfClosingExample>`
 
 	if normalizeXML(string(outputBytes)) != normalizeXML(expectedXML) {
 		t.Fatalf("Expected: %s, Got: %s", expectedXML, string(outputBytes))

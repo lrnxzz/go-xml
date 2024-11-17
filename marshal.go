@@ -79,13 +79,6 @@ func Marshal(v interface{}, opts *MarshalOptions) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func insertAttributeAtBeginning(attrs []Attribute, attr Attribute) []Attribute {
-	newAttrs := make([]Attribute, len(attrs)+1)
-	newAttrs[0] = attr
-	copy(newAttrs[1:], attrs)
-	return newAttrs
-}
-
 func structToNode(val reflect.Value, opts *MarshalOptions, tagHierarchy []string) (Node, error) {
 	for val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface {
 		if val.IsNil() {
@@ -94,12 +87,12 @@ func structToNode(val reflect.Value, opts *MarshalOptions, tagHierarchy []string
 		val = val.Elem()
 	}
 
-	if len(tagHierarchy) == 0 {
-		return nil, fmt.Errorf("tag hierarchy is empty")
+	currentTag := ""
+	remainingTags := tagHierarchy
+	if len(tagHierarchy) > 0 {
+		currentTag = tagHierarchy[0]
+		remainingTags = tagHierarchy[1:]
 	}
-
-	currentTag := tagHierarchy[0]
-	remainingTags := tagHierarchy[1:]
 
 	switch val.Kind() {
 	case reflect.Struct:
@@ -122,7 +115,15 @@ func handleStructNode(val reflect.Value, currentTag string, opts *MarshalOptions
 		field := fieldMeta.FieldType
 		fieldValue := val.FieldByIndex(field.Index)
 
-		if field.Type == reflect.TypeOf(xml.Name{}) {
+		if field.Anonymous {
+			embeddedNode, err := structToNode(fieldValue, opts, []string{})
+			if err != nil {
+				return nil, err
+			}
+			if embeddedElement, ok := embeddedNode.(*ElementNode); ok {
+				element.Attributes = append(element.Attributes, embeddedElement.Attributes...)
+				element.Children = append(element.Children, embeddedElement.Children...)
+			}
 			continue
 		}
 
@@ -140,6 +141,13 @@ func handleStructNode(val reflect.Value, currentTag string, opts *MarshalOptions
 		var tagOptions []string
 		if len(tagParts) > 1 {
 			tagOptions = tagParts[1:]
+		}
+
+		if field.Type == reflect.TypeOf(xml.Name{}) {
+			if xmlName, ok := fieldValue.Interface().(xml.Name); ok && xmlName.Local != "" {
+				element.Name = xmlName.Local
+			}
+			continue
 		}
 
 		if err := processField(element, fieldValue, tagName, tagOptions, opts); err != nil {

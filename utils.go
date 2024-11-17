@@ -6,6 +6,13 @@ import (
 	"strings"
 )
 
+func insertAttributeAtBeginning(attrs []Attribute, attr Attribute) []Attribute {
+	newAttrs := make([]Attribute, len(attrs)+1)
+	newAttrs[0] = attr
+	copy(newAttrs[1:], attrs)
+	return newAttrs
+}
+
 func hasNonEmptyChildren(node *ElementNode) bool {
 	for _, child := range node.Children {
 		switch c := child.(type) {

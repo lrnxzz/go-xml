@@ -24,13 +24,9 @@ func NewEncoder(w io.Writer, selfClosingTags []string, indent string) *Encoder {
 		depth:       0,
 	}
 }
+
 func (e *Encoder) writeIndent() error {
 	if e.indent != "" {
-		if e.depth > 0 {
-			_, err := e.w.Write([]byte("\n" + strings.Repeat(e.indent, e.depth)))
-			return err
-		}
-
 		_, err := e.w.Write([]byte(strings.Repeat(e.indent, e.depth)))
 		return err
 	}
@@ -38,99 +34,69 @@ func (e *Encoder) writeIndent() error {
 }
 
 func (e *Encoder) VisitElement(node *ElementNode) error {
+	if e.depth > 0 {
+		if _, err := e.w.Write([]byte("\n")); err != nil {
+			return err
+		}
+	}
 	if err := e.writeIndent(); err != nil {
 		return err
 	}
 
-	_, err := e.w.Write([]byte("<" + node.Name))
-	if err != nil {
+	if _, err := e.w.Write([]byte("<" + node.Name)); err != nil {
 		return err
 	}
 
 	for _, attr := range node.Attributes {
-		if attr.Name == "xmlns" {
-			_, err := e.w.Write([]byte(` xmlns="` + escapeString(attr.Value) + `"`))
-			if err != nil {
-				return err
-			}
-			break
+		if _, err := e.w.Write([]byte(" " + attr.Name + "=\"" + escapeString(attr.Value) + "\"")); err != nil {
+			return err
 		}
 	}
 
-	for _, attr := range node.Attributes {
-		if attr.Name != "xmlns" {
-			_, err := e.w.Write([]byte(` ` + attr.Name + `="` + escapeString(attr.Value) + `"`))
-			if err != nil {
-				return err
-			}
-		}
-	}
+	shouldSelfClose := node.SelfClose || (e.selfClosing[node.Name] && !hasNonEmptyChildren(node))
 
-	isSelfClosing := node.SelfClose || (e.selfClosing[node.Name] && len(node.Children) == 0)
-	if isSelfClosing {
-		_, err := e.w.Write([]byte("/>"))
-		if err != nil {
+	if shouldSelfClose {
+		if _, err := e.w.Write([]byte("/>")); err != nil {
 			return err
 		}
 		releaseElementNode(node)
 		return nil
 	}
 
-	_, err = e.w.Write([]byte(">"))
-	if err != nil {
+	if _, err := e.w.Write([]byte(">")); err != nil {
 		return err
 	}
 
 	e.depth++
 	for _, child := range node.Children {
-		err := child.Accept(e)
-		if err != nil {
+		if err := child.Accept(e); err != nil {
 			return err
 		}
 	}
 	e.depth--
 
-	if e.indent != "" && len(node.Children) > 0 {
-		if err := e.writeIndent(); err != nil {
-			return err
+	if len(node.Children) > 0 {
+		if _, isElement := node.Children[len(node.Children)-1].(*ElementNode); isElement {
+			if _, err := e.w.Write([]byte("\n")); err != nil {
+				return err
+			}
+			if err := e.writeIndent(); err != nil {
+				return err
+			}
 		}
 	}
 
-	_, err = e.w.Write([]byte("</" + node.Name + ">"))
-	if err != nil {
+	if _, err := e.w.Write([]byte("</" + node.Name + ">")); err != nil {
 		return err
 	}
-
 	releaseElementNode(node)
 	return nil
 }
 
 func (e *Encoder) VisitText(node *TextNode) error {
-	_, err := e.w.Write([]byte(escapeString(node.Text)))
-	if err != nil {
+	if _, err := e.w.Write([]byte(escapeString(node.Text))); err != nil {
 		return err
 	}
-
 	releaseTextNode(node)
 	return nil
-}
-func escapeString(s string) string {
-	var buf strings.Builder
-	for _, c := range s {
-		switch c {
-		case '&':
-			buf.WriteString("&amp;")
-		case '<':
-			buf.WriteString("&lt;")
-		case '>':
-			buf.WriteString("&gt;")
-		case '"':
-			buf.WriteString("&quot;")
-		case '\'':
-			buf.WriteString("&apos;")
-		default:
-			buf.WriteRune(c)
-		}
-	}
-	return buf.String()
 }

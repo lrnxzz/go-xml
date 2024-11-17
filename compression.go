@@ -20,7 +20,10 @@ func (gc *GzipCompressor) Compress(data *bytes.Buffer) (*bytes.Buffer, error) {
 		releaseBuffer(compressedBuffer)
 		return nil, err
 	}
-	writer.Close()
+	if err := writer.Close(); err != nil {
+		releaseBuffer(compressedBuffer)
+		return nil, err
+	}
 
 	return compressedBuffer, nil
 }

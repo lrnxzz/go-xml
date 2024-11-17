@@ -30,20 +30,22 @@ type TextNode struct {
 	Text string
 }
 
-var elementNodePool = sync.Pool{
-	New: func() interface{} {
-		return &ElementNode{
-			Attributes: make([]Attribute, 0),
-			Children:   make([]Node, 0),
-		}
-	},
-}
+var (
+	elementNodePool = sync.Pool{
+		New: func() interface{} {
+			return &ElementNode{
+				Attributes: make([]Attribute, 0, 5),
+				Children:   make([]Node, 0, 5),
+			}
+		},
+	}
 
-var textNodePool = sync.Pool{
-	New: func() interface{} {
-		return &TextNode{}
-	},
-}
+	textNodePool = sync.Pool{
+		New: func() interface{} {
+			return &TextNode{}
+		},
+	}
+)
 
 func acquireElementNode() *ElementNode {
 	node := elementNodePool.Get().(*ElementNode)
@@ -82,4 +84,13 @@ func (n *TextNode) Accept(visitor Visitor) error {
 
 func (n *TextNode) Reset() {
 	n.Text = ""
+}
+
+func (n *ElementNode) HasAttribute(name string) bool {
+	for _, attr := range n.Attributes {
+		if attr.Name == name {
+			return true
+		}
+	}
+	return false
 }

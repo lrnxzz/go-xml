@@ -14,6 +14,7 @@ type MarshalOptions struct {
 	RootTag         string
 	Compress        bool
 	SelfClosingTags []string
+	SpacedSelfClose bool
 }
 
 func Marshal(v interface{}, opts *MarshalOptions) ([]byte, error) {
@@ -38,7 +39,7 @@ func Marshal(v interface{}, opts *MarshalOptions) ([]byte, error) {
 	buf := acquireBuffer()
 	defer releaseBuffer(buf)
 
-	encoder := NewEncoder(buf, opts.SelfClosingTags, opts.Indent)
+	encoder := NewEncoder(buf, opts.SelfClosingTags, opts.Indent, opts.SpacedSelfClose)
 
 	if opts.XMLHeader {
 		if _, err := buf.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"); err != nil {

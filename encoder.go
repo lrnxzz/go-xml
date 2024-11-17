@@ -6,22 +6,24 @@ import (
 )
 
 type Encoder struct {
-	w           io.Writer
-	selfClosing map[string]bool
-	indent      string
-	depth       int
+	w               io.Writer
+	selfClosing     map[string]bool
+	indent          string
+	depth           int
+	spacedSelfClose bool
 }
 
-func NewEncoder(w io.Writer, selfClosingTags []string, indent string) *Encoder {
+func NewEncoder(w io.Writer, selfClosingTags []string, indent string, spacedSelfClose bool) *Encoder {
 	selfClosing := make(map[string]bool)
 	for _, tag := range selfClosingTags {
 		selfClosing[tag] = true
 	}
 	return &Encoder{
-		w:           w,
-		selfClosing: selfClosing,
-		indent:      indent,
-		depth:       0,
+		w:               w,
+		selfClosing:     selfClosing,
+		indent:          indent,
+		depth:           0,
+		spacedSelfClose: spacedSelfClose,
 	}
 }
 
@@ -55,8 +57,13 @@ func (e *Encoder) VisitElement(node *ElementNode) error {
 
 	shouldSelfClose := node.SelfClose || (e.selfClosing[node.Name] && !hasNonEmptyChildren(node))
 
+	closing := "/>"
+	if e.spacedSelfClose {
+		closing = " />"
+	}
+
 	if shouldSelfClose {
-		if _, err := e.w.Write([]byte("/>")); err != nil {
+		if _, err := e.w.Write([]byte(closing)); err != nil {
 			return err
 		}
 		releaseElementNode(node)

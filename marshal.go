@@ -1,10 +1,15 @@
 package go_xml
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"reflect"
 	"strings"
+)
+
+const (
+	xmlHeader = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
 )
 
 type MarshalOptions struct {
@@ -42,7 +47,7 @@ func Marshal(v interface{}, opts *MarshalOptions) ([]byte, error) {
 	encoder := NewEncoder(buf, opts.SelfClosingTags, opts.Indent, opts.SpacedSelfClose)
 
 	if opts.XMLHeader {
-		if _, err := buf.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"); err != nil {
+		if _, err := buf.WriteString(xmlHeader); err != nil {
 			return nil, err
 		}
 		if opts.Indent != "" {
@@ -66,18 +71,22 @@ func Marshal(v interface{}, opts *MarshalOptions) ([]byte, error) {
 	}
 
 	if opts.Compress {
-		compressor := acquireCompressor()
-		defer releaseCompressor(compressor)
-
-		compressedBuf, err := compressor.Compress(buf)
-		if err != nil {
-			return nil, fmt.Errorf("error compressing data: %w", err)
-		}
-		defer releaseBuffer(compressedBuf)
-		return compressedBuf.Bytes(), nil
+		return compressBuffer(buf)
 	}
 
 	return buf.Bytes(), nil
+}
+
+func compressBuffer(buf *bytes.Buffer) ([]byte, error) {
+	compressor := acquireCompressor()
+	defer releaseCompressor(compressor)
+
+	compressedBuf, err := compressor.Compress(buf)
+	if err != nil {
+		return nil, fmt.Errorf("error compressing data: %w", err)
+	}
+	defer releaseBuffer(compressedBuf)
+	return compressedBuf.Bytes(), nil
 }
 
 func structToNode(val reflect.Value, opts *MarshalOptions, tagHierarchy []string) (Node, error) {
@@ -117,13 +126,8 @@ func handleStructNode(val reflect.Value, currentTag string, opts *MarshalOptions
 		fieldValue := val.FieldByIndex(field.Index)
 
 		if field.Anonymous {
-			embeddedNode, err := structToNode(fieldValue, opts, []string{})
-			if err != nil {
+			if err := processAnonymousField(element, fieldValue, opts); err != nil {
 				return nil, err
-			}
-			if embeddedElement, ok := embeddedNode.(*ElementNode); ok {
-				element.Attributes = append(element.Attributes, embeddedElement.Attributes...)
-				element.Children = append(element.Children, embeddedElement.Children...)
 			}
 			continue
 		}
@@ -157,6 +161,18 @@ func handleStructNode(val reflect.Value, currentTag string, opts *MarshalOptions
 	}
 
 	return element, nil
+}
+
+func processAnonymousField(element *ElementNode, fieldValue reflect.Value, opts *MarshalOptions) error {
+	embeddedNode, err := structToNode(fieldValue, opts, []string{})
+	if err != nil {
+		return err
+	}
+	if embeddedElement, ok := embeddedNode.(*ElementNode); ok {
+		element.Attributes = append(element.Attributes, embeddedElement.Attributes...)
+		element.Children = append(element.Children, embeddedElement.Children...)
+	}
+	return nil
 }
 
 func handleSliceNode(val reflect.Value, currentTag string, remainingTags []string, opts *MarshalOptions) (Node, error) {

@@ -34,22 +34,51 @@ func TestBasicSerialization(t *testing.T) {
 		ID   int    `xml:"id,attr"`
 		Name string `xml:"name"`
 	}
-	example := SimpleStruct{ID: 1, Name: "TestName"}
-	opts := &MarshalOptions{
-		Indent:    "  ",
-		XMLHeader: true,
-		RootTag:   "CustomRootTag",
-	}
-	outputBytes, err := Marshal(example, opts)
-	if err != nil {
-		t.Fatalf("Serialization error: %v", err)
-	}
-	expected := `<?xml version="1.0" encoding="UTF-8"?>
+
+	tests := []struct {
+		name     string
+		input    SimpleStruct
+		opts     *MarshalOptions
+		expected string
+	}{
+		{
+			name:  "Basic case",
+			input: SimpleStruct{ID: 1, Name: "TestName"},
+			opts: &MarshalOptions{
+				Indent:    "  ",
+				XMLHeader: true,
+				RootTag:   "CustomRootTag",
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
 <CustomRootTag id="1">
   <name>TestName</name>
-</CustomRootTag>`
-	if normalizeXML(string(outputBytes)) != normalizeXML(expected) {
-		t.Fatalf("Expected: %s, Got: %s", expected, string(outputBytes))
+</CustomRootTag>`,
+		},
+		{
+			name:  "Empty name",
+			input: SimpleStruct{ID: 2, Name: ""},
+			opts: &MarshalOptions{
+				Indent:    "  ",
+				XMLHeader: true,
+				RootTag:   "CustomRootTag",
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
+<CustomRootTag id="2">
+  <name></name>
+</CustomRootTag>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputBytes, err := Marshal(tt.input, tt.opts)
+			if err != nil {
+				t.Fatalf("Serialization error: %v", err)
+			}
+			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
+				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
+			}
+		})
 	}
 }
 
@@ -64,27 +93,32 @@ func TestNestedStructSerialization(t *testing.T) {
 		Child    *ChildStruct  `xml:"child,omitempty"`
 		Children []ChildStruct `xml:"children>child"`
 	}
-	example := ParentStruct{
-		ID:    3,
-		Title: "Parent",
-		Child: &ChildStruct{
-			ID:   4,
-			Data: "ChildData",
-		},
-		Children: []ChildStruct{
-			{ID: 5, Data: "Child1"},
-			{ID: 6, Data: "Child2"},
-		},
-	}
-	opts := &MarshalOptions{
-		Indent:    "  ",
-		XMLHeader: true,
-	}
-	outputBytes, err := Marshal(example, opts)
-	if err != nil {
-		t.Fatalf("Serialization error: %v", err)
-	}
-	expected := `<?xml version="1.0" encoding="UTF-8"?>
+
+	tests := []struct {
+		name     string
+		input    ParentStruct
+		opts     *MarshalOptions
+		expected string
+	}{
+		{
+			name: "With child and children",
+			input: ParentStruct{
+				ID:    3,
+				Title: "Parent",
+				Child: &ChildStruct{
+					ID:   4,
+					Data: "ChildData",
+				},
+				Children: []ChildStruct{
+					{ID: 5, Data: "Child1"},
+					{ID: 6, Data: "Child2"},
+				},
+			},
+			opts: &MarshalOptions{
+				Indent:    "  ",
+				XMLHeader: true,
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
 <ParentStruct id="3">
   <title>Parent</title>
   <child id="4">
@@ -98,9 +132,47 @@ func TestNestedStructSerialization(t *testing.T) {
       <data>Child2</data>
     </child>
   </children>
-</ParentStruct>`
-	if normalizeXML(string(outputBytes)) != normalizeXML(expected) {
-		t.Fatalf("Expected: %s, Got: %s", expected, string(outputBytes))
+</ParentStruct>`,
+		},
+		{
+			name: "Without child",
+			input: ParentStruct{
+				ID:    3,
+				Title: "Parent",
+				Children: []ChildStruct{
+					{ID: 5, Data: "Child1"},
+					{ID: 6, Data: "Child2"},
+				},
+			},
+			opts: &MarshalOptions{
+				Indent:    "  ",
+				XMLHeader: true,
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
+<ParentStruct id="3">
+  <title>Parent</title>
+  <children>
+    <child id="5">
+      <data>Child1</data>
+    </child>
+    <child id="6">
+      <data>Child2</data>
+    </child>
+  </children>
+</ParentStruct>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputBytes, err := Marshal(tt.input, tt.opts)
+			if err != nil {
+				t.Fatalf("Serialization error: %v", err)
+			}
+			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
+				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
+			}
+		})
 	}
 }
 
@@ -112,52 +184,64 @@ func TestSelfClosingTagsSerialization(t *testing.T) {
 		Note        string `xml:"note"`
 	}
 
-	// Case with empty fields that should be self-closed
-	example1 := ElementWithEmptyFields{
-		ID:          7,
-		Content:     "",
-		Description: "",
-		Note:        "",
-	}
-	opts1 := &MarshalOptions{
-		SelfClosingTags: []string{"content", "description", "note"},
-		Indent:          "  ",
-		XMLHeader:       true,
-	}
-	outputBytes1, err := Marshal(example1, opts1)
-	if err != nil {
-		t.Fatalf("Serialization error: %v", err)
-	}
-	expected1 := `<?xml version="1.0" encoding="UTF-8"?>
+	tests := []struct {
+		name     string
+		input    ElementWithEmptyFields
+		opts     *MarshalOptions
+		expected string
+	}{
+		{
+			name: "All fields empty",
+			input: ElementWithEmptyFields{
+				ID:          7,
+				Content:     "",
+				Description: "",
+				Note:        "",
+			},
+			opts: &MarshalOptions{
+				SelfClosingTags: []string{"content", "description", "note"},
+				Indent:          "  ",
+				XMLHeader:       true,
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
 <ElementWithEmptyFields id="7">
   <content/>
   <description/>
   <note/>
-</ElementWithEmptyFields>`
-	if normalizeXML(string(outputBytes1)) != normalizeXML(expected1) {
-		t.Fatalf("Expected: %s, Got: %s", expected1, string(outputBytes1))
-	}
-
-	// Case where some fields have content
-	example2 := ElementWithEmptyFields{
-		ID:          8,
-		Content:     "Has content",
-		Description: "",
-		Note:        "Also has content",
-	}
-	opts2 := opts1
-	outputBytes2, err := Marshal(example2, opts2)
-	if err != nil {
-		t.Fatalf("Serialization error: %v", err)
-	}
-	expected2 := `<?xml version="1.0" encoding="UTF-8"?>
+</ElementWithEmptyFields>`,
+		},
+		{
+			name: "Some fields with content",
+			input: ElementWithEmptyFields{
+				ID:          8,
+				Content:     "Has content",
+				Description: "",
+				Note:        "Also has content",
+			},
+			opts: &MarshalOptions{
+				SelfClosingTags: []string{"content", "description", "note"},
+				Indent:          "  ",
+				XMLHeader:       true,
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
 <ElementWithEmptyFields id="8">
   <content>Has content</content>
   <description/>
   <note>Also has content</note>
-</ElementWithEmptyFields>`
-	if normalizeXML(string(outputBytes2)) != normalizeXML(expected2) {
-		t.Fatalf("Expected: %s, Got: %s", expected2, string(outputBytes2))
+</ElementWithEmptyFields>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputBytes, err := Marshal(tt.input, tt.opts)
+			if err != nil {
+				t.Fatalf("Serialization error: %v", err)
+			}
+			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
+				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
+			}
+		})
 	}
 }
 
@@ -165,54 +249,64 @@ func TestCompressionOptionWithLargerData(t *testing.T) {
 	type Data struct {
 		Text string `xml:"text"`
 	}
-	// Increase data size by repeating the text multiple times
+
 	largeText := strings.Repeat("This is a test string for compression. ", 100)
 	example := Data{Text: largeText}
 
-	// Serialize without compression
-	optsUncompressed := &MarshalOptions{
-		XMLHeader: true,
-		Indent:    "  ",
-	}
-	uncompressedData, err := Marshal(example, optsUncompressed)
-	if err != nil {
-		t.Fatalf("Serialization error: %v", err)
+	tests := []struct {
+		name           string
+		opts           *MarshalOptions
+		verifyFunction func(t *testing.T, uncompressedData, compressedData []byte)
+	}{
+		{
+			name: "Compression",
+			opts: &MarshalOptions{
+				Compress:  true,
+				XMLHeader: true,
+				Indent:    "  ",
+			},
+			verifyFunction: func(t *testing.T, uncompressedData, compressedData []byte) {
+				t.Logf("Uncompressed data size: %d bytes", len(uncompressedData))
+				t.Logf("Compressed data size: %d bytes", len(compressedData))
+
+				if len(compressedData) >= len(uncompressedData) {
+					t.Fatalf("Compressed data is not smaller than uncompressed data")
+				}
+
+				reader, err := gzip.NewReader(bytes.NewReader(compressedData))
+				if err != nil {
+					t.Fatalf("Gzip reader error: %v", err)
+				}
+				defer reader.Close()
+				decompressedData, err := io.ReadAll(reader)
+				if err != nil {
+					t.Fatalf("Decompression error: %v", err)
+				}
+
+				if !bytes.Equal(uncompressedData, decompressedData) {
+					t.Fatalf("Decompressed data does not match uncompressed data")
+				}
+			},
+		},
 	}
 
-	// Serialize with compression
-	optsCompressed := &MarshalOptions{
-		Compress:  true,
-		XMLHeader: true,
-		Indent:    "  ",
-	}
-	compressedData, err := Marshal(example, optsCompressed)
-	if err != nil {
-		t.Fatalf("Compression error: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			uncompressedData, err := Marshal(example, &MarshalOptions{
+				XMLHeader: true,
+				Indent:    "  ",
+			})
+			if err != nil {
+				t.Fatalf("Serialization error: %v", err)
+			}
 
-	// Print sizes before and after compression
-	t.Logf("Uncompressed data size: %d bytes", len(uncompressedData))
-	t.Logf("Compressed data size: %d bytes", len(compressedData))
+			compressedData, err := Marshal(example, tt.opts)
+			if err != nil {
+				t.Fatalf("Compression error: %v", err)
+			}
 
-	// Verify that compressed data is smaller
-	if len(compressedData) >= len(uncompressedData) {
-		t.Fatalf("Compressed data is not smaller than uncompressed data")
-	}
-
-	// Decompress and verify the data
-	reader, err := gzip.NewReader(bytes.NewReader(compressedData))
-	if err != nil {
-		t.Fatalf("Gzip reader error: %v", err)
-	}
-	defer reader.Close()
-	decompressedData, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatalf("Decompression error: %v", err)
-	}
-
-	// Verify that the decompressed data matches the uncompressed data
-	if !bytes.Equal(uncompressedData, decompressedData) {
-		t.Fatalf("Decompressed data does not match uncompressed data")
+			tt.verifyFunction(t, uncompressedData, compressedData)
+		})
 	}
 }
 
@@ -220,21 +314,37 @@ func TestSpecialCharacters(t *testing.T) {
 	type SpecialCharStruct struct {
 		Text string `xml:"text"`
 	}
-	example := SpecialCharStruct{Text: "Special chars: & < > \" '"}
-	opts := &MarshalOptions{
-		Indent:    "  ",
-		XMLHeader: true,
-	}
-	outputBytes, err := Marshal(example, opts)
-	if err != nil {
-		t.Fatalf("Serialization error: %v", err)
-	}
-	expected := `<?xml version="1.0" encoding="UTF-8"?>
+
+	tests := []struct {
+		name     string
+		input    SpecialCharStruct
+		opts     *MarshalOptions
+		expected string
+	}{
+		{
+			name:  "Special characters",
+			input: SpecialCharStruct{Text: "Special chars: & < > \" '"},
+			opts: &MarshalOptions{
+				Indent:    "  ",
+				XMLHeader: true,
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
 <SpecialCharStruct>
   <text>Special chars: &amp; &lt; &gt; &quot; &apos;</text>
-</SpecialCharStruct>`
-	if normalizeXML(string(outputBytes)) != normalizeXML(expected) {
-		t.Fatalf("Expected: %s, Got: %s", expected, string(outputBytes))
+</SpecialCharStruct>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputBytes, err := Marshal(tt.input, tt.opts)
+			if err != nil {
+				t.Fatalf("Serialization error: %v", err)
+			}
+			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
+				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
+			}
+		})
 	}
 }
 
@@ -245,19 +355,52 @@ func TestOmitEmptyFields(t *testing.T) {
 		Value float64 `xml:"value,omitempty"`
 		Note  *string `xml:"note,omitempty"`
 	}
-	example := OmitEmptyStruct{ID: 8}
-	opts := &MarshalOptions{
-		Indent:    "  ",
-		XMLHeader: true,
+
+	tests := []struct {
+		name     string
+		input    OmitEmptyStruct
+		opts     *MarshalOptions
+		expected string
+	}{
+		{
+			name:  "Omit empty fields",
+			input: OmitEmptyStruct{ID: 8},
+			opts: &MarshalOptions{
+				Indent:    "  ",
+				XMLHeader: true,
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
+<OmitEmptyStruct id="8"></OmitEmptyStruct>`,
+		},
+		{
+			name: "With non-empty fields",
+			input: OmitEmptyStruct{
+				ID:    9,
+				Name:  "TestName",
+				Value: 123.45,
+			},
+			opts: &MarshalOptions{
+				Indent:    "  ",
+				XMLHeader: true,
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
+<OmitEmptyStruct id="9">
+  <name>TestName</name>
+  <value>123.45</value>
+</OmitEmptyStruct>`,
+		},
 	}
-	outputBytes, err := Marshal(example, opts)
-	if err != nil {
-		t.Fatalf("Serialization error: %v", err)
-	}
-	expected := `<?xml version="1.0" encoding="UTF-8"?>
-<OmitEmptyStruct id="8"></OmitEmptyStruct>`
-	if normalizeXML(string(outputBytes)) != normalizeXML(expected) {
-		t.Fatalf("Expected: %s, Got: %s", expected, string(outputBytes))
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputBytes, err := Marshal(tt.input, tt.opts)
+			if err != nil {
+				t.Fatalf("Serialization error: %v", err)
+			}
+			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
+				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
+			}
+		})
 	}
 }
 
@@ -266,22 +409,38 @@ func TestNamespaceSerialization(t *testing.T) {
 		ID   int    `xml:"id,attr"`
 		Name string `xml:"name"`
 	}
-	example := NamespacedStruct{ID: 9, Name: "Namespaced"}
-	opts := &MarshalOptions{
-		Indent:    "  ",
-		XMLHeader: true,
-		Namespace: "http://example.com/schema",
-	}
-	outputBytes, err := Marshal(example, opts)
-	if err != nil {
-		t.Fatalf("Serialization error: %v", err)
-	}
-	expected := `<?xml version="1.0" encoding="UTF-8"?>
+
+	tests := []struct {
+		name     string
+		input    NamespacedStruct
+		opts     *MarshalOptions
+		expected string
+	}{
+		{
+			name:  "With namespace",
+			input: NamespacedStruct{ID: 9, Name: "Namespaced"},
+			opts: &MarshalOptions{
+				Indent:    "  ",
+				XMLHeader: true,
+				Namespace: "http://example.com/schema",
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
 <NamespacedStruct xmlns="http://example.com/schema" id="9">
   <name>Namespaced</name>
-</NamespacedStruct>`
-	if normalizeXML(string(outputBytes)) != normalizeXML(expected) {
-		t.Fatalf("Expected: %s, Got: %s", expected, string(outputBytes))
+</NamespacedStruct>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputBytes, err := Marshal(tt.input, tt.opts)
+			if err != nil {
+				t.Fatalf("Serialization error: %v", err)
+			}
+			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
+				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
+			}
+		})
 	}
 }
 
@@ -291,25 +450,59 @@ func TestPointerFieldsSerialization(t *testing.T) {
 		Name   *string `xml:"name,omitempty"`
 		Active *bool   `xml:"active,omitempty"`
 	}
+
 	id := 10
 	name := "Pointer"
 	active := true
-	example := PointerStruct{ID: &id, Name: &name, Active: &active}
-	opts := &MarshalOptions{
-		Indent:    "  ",
-		XMLHeader: true,
-	}
-	outputBytes, err := Marshal(example, opts)
-	if err != nil {
-		t.Fatalf("Serialization error: %v", err)
-	}
-	expected := `<?xml version="1.0" encoding="UTF-8"?>
+
+	tests := []struct {
+		name     string
+		input    PointerStruct
+		opts     *MarshalOptions
+		expected string
+	}{
+		{
+			name: "All fields set",
+			input: PointerStruct{
+				ID:     &id,
+				Name:   &name,
+				Active: &active,
+			},
+			opts: &MarshalOptions{
+				Indent:    "  ",
+				XMLHeader: true,
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
 <PointerStruct id="10">
   <name>Pointer</name>
   <active>true</active>
-</PointerStruct>`
-	if normalizeXML(string(outputBytes)) != normalizeXML(expected) {
-		t.Fatalf("Expected: %s, Got: %s", expected, string(outputBytes))
+</PointerStruct>`,
+		},
+		{
+			name: "Some fields nil",
+			input: PointerStruct{
+				ID:   &id,
+				Name: nil,
+			},
+			opts: &MarshalOptions{
+				Indent:    "  ",
+				XMLHeader: true,
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
+<PointerStruct id="10"></PointerStruct>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputBytes, err := Marshal(tt.input, tt.opts)
+			if err != nil {
+				t.Fatalf("Serialization error: %v", err)
+			}
+			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
+				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
+			}
+		})
 	}
 }
 
@@ -320,21 +513,26 @@ func TestMixedContentSerialization(t *testing.T) {
 		Values []string `xml:"values>value"`
 		Note   string   `xml:"note,omitempty"`
 	}
-	example := MixedContent{
-		ID:     11,
-		Title:  "Mixed Content",
-		Values: []string{"One", "Two", "Three"},
-		Note:   "",
-	}
-	opts := &MarshalOptions{
-		Indent:    "    ",
-		XMLHeader: true,
-	}
-	outputBytes, err := Marshal(example, opts)
-	if err != nil {
-		t.Fatalf("Serialization error: %v", err)
-	}
-	expected := `<?xml version="1.0" encoding="UTF-8"?>
+
+	tests := []struct {
+		name     string
+		input    MixedContent
+		opts     *MarshalOptions
+		expected string
+	}{
+		{
+			name: "With note",
+			input: MixedContent{
+				ID:     11,
+				Title:  "Mixed Content",
+				Values: []string{"One", "Two", "Three"},
+				Note:   "Note content",
+			},
+			opts: &MarshalOptions{
+				Indent:    "    ",
+				XMLHeader: true,
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
 <MixedContent id="11">
     <title>Mixed Content</title>
     <values>
@@ -342,8 +540,41 @@ func TestMixedContentSerialization(t *testing.T) {
         <value>Two</value>
         <value>Three</value>
     </values>
-</MixedContent>`
-	if normalizeXML(string(outputBytes)) != normalizeXML(expected) {
-		t.Fatalf("Expected: %s, Got: %s", expected, string(outputBytes))
+    <note>Note content</note>
+</MixedContent>`,
+		},
+		{
+			name: "Without note",
+			input: MixedContent{
+				ID:     11,
+				Title:  "Mixed Content",
+				Values: []string{"One", "Two", "Three"},
+			},
+			opts: &MarshalOptions{
+				Indent:    "    ",
+				XMLHeader: true,
+			},
+			expected: `<?xml version="1.0" encoding="UTF-8"?>
+<MixedContent id="11">
+    <title>Mixed Content</title>
+    <values>
+        <value>One</value>
+        <value>Two</value>
+        <value>Three</value>
+    </values>
+</MixedContent>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputBytes, err := Marshal(tt.input, tt.opts)
+			if err != nil {
+				t.Fatalf("Serialization error: %v", err)
+			}
+			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
+				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
+			}
+		})
 	}
 }

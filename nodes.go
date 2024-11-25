@@ -34,8 +34,8 @@ var (
 	elementNodePool = sync.Pool{
 		New: func() interface{} {
 			return &ElementNode{
-				Attributes: make([]Attribute, 0, 5),
-				Children:   make([]Node, 0, 5),
+				Attributes: make([]Attribute, 0, 10),
+				Children:   make([]Node, 0, 10),
 			}
 		},
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 )
 
 const (
@@ -179,14 +180,40 @@ func handleSliceNode(val reflect.Value, currentTag string, remainingTags []strin
 	element := acquireElementNode()
 	element.Name = currentTag
 
+	childNodes := make([]Node, val.Len())
+	wg := sync.WaitGroup{}
+	errChan := make(chan error, 1)
+	var mutex sync.Mutex
+
 	for i := 0; i < val.Len(); i++ {
-		itemValue := val.Index(i)
-		childNode, err := structToNode(itemValue, opts, remainingTags)
-		if err != nil {
-			return nil, err
-		}
-		if childNode != nil {
-			element.Children = append(element.Children, childNode)
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			childValue := val.Index(index)
+			childNode, err := structToNode(childValue, opts, remainingTags)
+			if err != nil {
+				select {
+				case errChan <- err:
+				default:
+				}
+				return
+			}
+			mutex.Lock()
+			childNodes[index] = childNode
+			mutex.Unlock()
+		}(i)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	if err := <-errChan; err != nil {
+		return nil, err
+	}
+
+	for _, node := range childNodes {
+		if node != nil {
+			element.Children = append(element.Children, node)
 		}
 	}
 

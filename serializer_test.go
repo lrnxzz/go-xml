@@ -3,9 +3,11 @@ package go_xml
 import (
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 )
 
@@ -77,6 +79,9 @@ func TestBasicSerialization(t *testing.T) {
 			}
 			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
 				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
+			}
+			if !isReadable(outputBytes) {
+				t.Fatalf("Output is not readable")
 			}
 		})
 	}
@@ -172,6 +177,9 @@ func TestNestedStructSerialization(t *testing.T) {
 			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
 				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
 			}
+			if !isReadable(outputBytes) {
+				t.Fatalf("Output is not readable")
+			}
 		})
 	}
 }
@@ -240,6 +248,9 @@ func TestSelfClosingTagsSerialization(t *testing.T) {
 			}
 			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
 				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
+			}
+			if !isReadable(outputBytes) {
+				t.Fatalf("Output is not readable")
 			}
 		})
 	}
@@ -344,6 +355,9 @@ func TestSpecialCharacters(t *testing.T) {
 			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
 				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
 			}
+			if !isReadable(outputBytes) {
+				t.Fatalf("Output is not readable")
+			}
 		})
 	}
 }
@@ -400,6 +414,9 @@ func TestOmitEmptyFields(t *testing.T) {
 			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
 				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
 			}
+			if !isReadable(outputBytes) {
+				t.Fatalf("Output is not readable")
+			}
 		})
 	}
 }
@@ -439,6 +456,9 @@ func TestNamespaceSerialization(t *testing.T) {
 			}
 			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
 				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
+			}
+			if !isReadable(outputBytes) {
+				t.Fatalf("Output is not readable")
 			}
 		})
 	}
@@ -501,6 +521,9 @@ func TestPointerFieldsSerialization(t *testing.T) {
 			}
 			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
 				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
+			}
+			if !isReadable(outputBytes) {
+				t.Fatalf("Output is not readable")
 			}
 		})
 	}
@@ -575,6 +598,97 @@ func TestMixedContentSerialization(t *testing.T) {
 			if normalizeXML(string(outputBytes)) != normalizeXML(tt.expected) {
 				t.Fatalf("Expected: %s, Got: %s", tt.expected, string(outputBytes))
 			}
+			if !isReadable(outputBytes) {
+				t.Fatalf("Output is not readable")
+			}
+		})
+	}
+}
+
+func BenchmarkPerformance(b *testing.B) {
+	type SimpleStruct struct {
+		ID   int    `xml:"id,attr"`
+		Name string `xml:"name"`
+	}
+
+	type NestedStruct struct {
+		ID       int      `xml:"id,attr"`
+		Title    string   `xml:"title"`
+		Children []string `xml:"children>child"`
+	}
+
+	tests := []struct {
+		scenario   string
+		data       interface{}
+		opts       *MarshalOptions
+		iterations int
+	}{
+		{
+			scenario: "Simple struct - 1M serializations",
+			data: SimpleStruct{
+				ID:   1,
+				Name: "TestName",
+			},
+			opts: &MarshalOptions{
+				Indent:    "  ",
+				XMLHeader: true,
+			},
+			iterations: 1_000_000,
+		},
+		{
+			scenario: "Nested struct - 1M serializations",
+			data: NestedStruct{
+				ID:    2,
+				Title: "Parent",
+				Children: []string{
+					"Child1",
+					"Child2",
+					"Child3",
+				},
+			},
+			opts: &MarshalOptions{
+				Indent:    "  ",
+				XMLHeader: true,
+			},
+			iterations: 1_000_000,
+		},
+		{
+			scenario: "Large data - 500k serializations",
+			data: NestedStruct{
+				ID:    3,
+				Title: "Large Parent",
+				Children: func() []string {
+					largeList := make([]string, 1000)
+					for i := range largeList {
+						largeList[i] = fmt.Sprintf("Child%d", i+1)
+					}
+					return largeList
+				}(),
+			},
+			opts: &MarshalOptions{
+				Indent:    "  ",
+				XMLHeader: true,
+			},
+			iterations: 500_000,
+		},
+	}
+
+	fmt.Println("Scenario,Iterations,TotalTime(s),AvgTimePerIteration(ms)")
+
+	for _, tt := range tests {
+		b.Run(tt.scenario, func(b *testing.B) {
+			start := time.Now()
+
+			for i := 0; i < tt.iterations; i++ {
+				_, err := Marshal(tt.data, tt.opts)
+				if err != nil {
+					b.Fatalf("Serialization error: %v", err)
+				}
+			}
+
+			duration := time.Since(start).Seconds()
+			avgTimePerIteration := (duration / float64(tt.iterations)) * 1000 // in milliseconds
+			fmt.Printf("%s,%d,%.2f,%.4f\n", tt.scenario, tt.iterations, duration, avgTimePerIteration)
 		})
 	}
 }
